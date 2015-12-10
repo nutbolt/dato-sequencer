@@ -51,26 +51,26 @@ Keypad keypad = Keypad( makeKeymap(keys), row_pins, col_pins, ROWS, COLS );
 const int CHANNEL = 1;
 const int GATE_LENGTH = 40;
 const int SYNC_LENGTH = 1;
-
+const int MIN_TEMPO = 300; // Tempo is actually an interval in ms
 
 // Sequencer settings
 const int NUM_STEPS = 8;
 const int VELOCITY_STEP = 5;
 const int INITIAL_VELOCITY = 100;
 const int VELOCITY_THRESHOLD = 50;
-unsigned int current_step = 0;
+unsigned int current_step = 0, tempo;
 unsigned long next_step, gate_off, sync_off;
 
-//const int SCALE[] = {46,49,51,54,56,58,61,63};
-const int SCALE[] = {46,49,51,54,61,63,66,68}; // Low with 2 note split
-//const int SCALE[] = {58,61,63,66,73,75,78,80};
-//const int SCALE[] = {61,63,66,68,75,78,80,82};
+
+const int SCALE[] = { 46,49,51,54,61,63,66,68 }; // Low with 2 note split
+//const int BLACK_KEYS[] = {22,25,27,30,32,34,37,39,42,44,46,49,51,54,56,58,61,63,66,68,73,75,78,80};
+
 
 // Note to colour mapping
 const CRGB COLOURS[] = {
-  CRGB::Purple,
+  0x990066,
   0xCC0000,
-  0xFF6322,
+  0xCC6300,
   0x999900,
   0x77DD00,
   CRGB::Green,
@@ -106,91 +106,79 @@ void setup() {
 void loop() {
 
   for(int s = 0; s < 8; s++) {
+    
+    current_step = s;
 
-    FastLED.clear();
-
-    if(step_velocity[s] <= VELOCITY_STEP) { /*step_velocity[s] = 0; step_enable[s] = 0;*/}
+    // Decrement the velocity of the current note. If minimum velocity is reached leave it there
+    if(step_velocity[s] <= VELOCITY_STEP) { /*step_velocity[s] = 0; step_enable[s] = 0;*/ }
     else{step_velocity[s] -= VELOCITY_STEP;}
 
-    Serial.print(s, DEC);
-    Serial.print(" v:");
-    Serial.print(step_velocity[s],DEC);
-    Serial.print(" ");
+    handle_leds();
 
-    for(int l = 0; l < 8; l++) {
-      if(step_enable[l]) {
-        leds[l] = COLOURS[step_note[l]];
-        if(step_velocity[l] < VELOCITY_THRESHOLD) {
-          leds[l].nscale8_video(step_velocity[l]+20);
-        }
-      }
-      else leds[l] = CRGB::Black;
-      leds[s] = CRGB::White;
-    }
+    digitalWrite(SYNC_PIN, HIGH); // Volca sync on
 
-    FastLED.show();
-
-    if(set_key < 9) {
-      step_note[s] = set_key;
-      step_enable[s] = 1;
-      step_velocity[s] = INITIAL_VELOCITY;
-      set_key = 9;
-    }
-
-    digitalWrite(SYNC_PIN, HIGH); // Volca sync
     sync_off = millis() + SYNC_LENGTH;
-
+    
     if(step_enable[s]) {
       MIDI.sendNoteOn(SCALE[step_note[s]], step_velocity[s], CHANNEL);
     }
+    gate_off = millis() + GATE_LENGTH;
 
     while(millis() < sync_off) {
       handle_keys();
     } 
-    digitalWrite(SYNC_PIN, LOW);
 
-
-    gate_off = millis() + GATE_LENGTH;
-
+    digitalWrite(SYNC_PIN, LOW); // Volca sync off
 
     while(millis() < gate_off) {
       handle_keys();
-      if(set_key < 9) {
-        step_enable[s] = 1;
-        step_velocity[s] = INITIAL_VELOCITY;
-
-        if(set_key != step_note[s]) {
-          MIDI.sendNoteOff(SCALE[step_note[s]], 64, CHANNEL);
-          step_note[s] = set_key;
-        }
-        set_key = 9;
-      }
     }
 
     MIDI.sendNoteOff(SCALE[step_note[s]], 64, CHANNEL);
 
-    int tempo = map(analogRead(TEMPO_PIN),0,1023,200,GATE_LENGTH);
-    next_step = millis() + tempo;
+    next_step = millis() + get_tempo();
+
+    // Very crude sequencer off implementation
+    while(get_tempo() >= MIN_TEMPO)
+    {
+      delay(20);
+      play_keys();
+      tempo = get_tempo();
+    }
+
+    // Advance the step number already, so any pressed keys end up in the next step
+    if(s == 7) current_step = 0;
+    else current_step = s+1;
 
     while(millis() < next_step) {
       handle_keys();
-      if(set_key < 9) {
-        if(s == 7) {
-          step_note[0] = set_key;
-          step_enable[0] = 1;
-          step_velocity[0] = INITIAL_VELOCITY;
-        }
-        else {
-          step_note[s+1] = set_key;
-          step_enable[s+1] = 1;
-          step_velocity[s+1] = INITIAL_VELOCITY;
-        }
-        set_key = 9;
-      }
     }
   }
 }
 
+// Updates the LED colour and brightness to match the stored sequence
+void handle_leds() {
+  FastLED.clear();
+
+  for(int l = 0; l < 8; l++) 
+  {
+    if(step_enable[l])
+    {
+      leds[l] = COLOURS[step_note[l]];
+
+      if(step_velocity[l] < VELOCITY_THRESHOLD) 
+      {
+        leds[l].nscale8_video(step_velocity[l]+20);
+      }
+    }
+    else leds[l] = CRGB::Black;
+    leds[current_step] = CRGB::White;
+  }
+
+  FastLED.show();
+}
+
+// Scans the keypad and handles step enable and keys
 void handle_keys() {
    // Fills keypad.key[ ] array with up-to 10 active keys.
   // Returns true if there are ANY active keys.
@@ -200,33 +188,67 @@ void handle_keys() {
     {
       if ( keypad.key[i].stateChanged )   // Only find keys that have changed state.
       {
+        char k = keypad.key[i].kchar;
         switch (keypad.key[i].kstate) {  // Report active key state : IDLE, PRESSED, HOLD, or RELEASED
-            case PRESSED:
-                //msg = " PRESSED.";
-                // we want to do something here
-                // either toggle the active step
-                char k = keypad.key[i].kchar;
+            case PRESSED:    
                 if(k >= 'a') {
                   step_enable[k-'a'] = 1-step_enable[k-'a'];
                   step_velocity[k-'a'] = INITIAL_VELOCITY;
                 } else {
-                  //step_note
-                  set_key = k - 'A';
+                  step_note[current_step] = set_key = k - 'A';
+                  step_enable[current_step] = 1;
+                  step_velocity[current_step] = INITIAL_VELOCITY;
                 }
-                // or set the note
                 break;
             /*case HOLD:
-                msg = " HOLD.";
-                break;
+                break;*/
             case RELEASED:
-                msg = " RELEASED.";
+                if(k < 'a') {
+                  MIDI.sendNoteOff(SCALE[k-'A'], 64, CHANNEL);
+                }
                 break;
-            case IDLE:
-                msg = " IDLE.";
+            /*case IDLE:
                 break;
-            //*/
+            */
         }
       }
     }
   }
+}
+
+// Sends midi noteon as keys are played and noteoff as keys are released
+void play_keys() {
+  // Fills keypad.key[ ] array with up-to 10 active keys.
+  // Returns true if there are ANY active keys.
+  if (keypad.getKeys())
+  {
+    for (int i=0; i<LIST_MAX; i++)   // Scan the whole key list.
+    {
+      if ( keypad.key[i].stateChanged )   // Only find keys that have changed state.
+      {
+        char k = keypad.key[i].kchar;
+        switch (keypad.key[i].kstate) {  // Report active key state : IDLE, PRESSED, HOLD, or RELEASED
+            case PRESSED:
+                if(k < 'a') {
+                  MIDI.sendNoteOn(SCALE[k-'A'], INITIAL_VELOCITY, CHANNEL);
+                }
+                break;
+            /*case HOLD:
+                break;*/
+            case RELEASED:
+                if(k < 'a') {
+                  MIDI.sendNoteOff(SCALE[k-'A'], 64, CHANNEL);
+                }
+                break;
+            /*case IDLE:
+                break;
+            */
+        }
+      }
+    }
+  }
+}
+
+int get_tempo() {
+  return map(analogRead(TEMPO_PIN),0,1023,MIN_TEMPO,GATE_LENGTH);
 }
