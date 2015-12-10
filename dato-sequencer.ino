@@ -29,7 +29,6 @@ struct CRGB leds[NUM_LEDS];            // Initialize our LED array.
 // Pins
 const unsigned char TEMPO_PIN = 14;
 const unsigned char SYNC_PIN = 2;
-const unsigned char EXPR_PIN = A9;
 
 
 // Key matrix
@@ -48,6 +47,7 @@ Keypad keypad = Keypad( makeKeymap(keys), row_pins, col_pins, ROWS, COLS );
 
 
 // MIDI & sync settings
+MIDI_CREATE_DEFAULT_INSTANCE();
 const int CHANNEL = 1;
 const int GATE_LENGTH = 40;
 const int SYNC_LENGTH = 1;
