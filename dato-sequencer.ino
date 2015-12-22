@@ -22,7 +22,6 @@
 #include <MIDI.h>
 #include <FastLED.h>
 
-
 // LED strip
 const unsigned char LED_DT = 17;       // Data pin to connect to the strip.
 #define COLOR_ORDER GRB                // It's GRB for WS2812B
@@ -33,7 +32,7 @@ const int LED_BRIGHTNESS = 32;
 
 // Pins
 const unsigned char TEMPO_PIN = 14;
-const unsigned char SYNC_PIN = 2;
+const unsigned char SYNC_PIN = A5;
 
 
 // Key matrix
@@ -178,7 +177,7 @@ void handle_leds() {
         leds[l].nscale8_video(step_velocity[l]+20);
       }
     }
-    else leds[l] = CRGB::DarkBlue;
+    else leds[l] = CRGB::Black;
     leds[current_step] = CRGB::White;
   }
 
