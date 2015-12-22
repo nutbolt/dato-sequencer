@@ -15,7 +15,7 @@
  Uses the MIDI library from https://github.com/PaulStoffregen/MIDI (originally from FortySevenEffects)
  Uses the FastLED library from https://github.com/FastLED/FastLED
 
- Pin definitions for Teensy 3.2
+ Pin definitions for Arduino Pro Mini (with some broken pins, so not the best pinout)
 
 */
 #include <Keypad.h>
@@ -23,7 +23,7 @@
 #include <FastLED.h>
 
 // LED strip
-const unsigned char LED_DT = 17;       // Data pin to connect to the strip.
+const unsigned char LED_DT = 2;       // Data pin to connect to the strip.
 #define COLOR_ORDER GRB                // It's GRB for WS2812B
 #define LED_TYPE WS2812                // What kind of strip are you using (WS2801, WS2812B or APA102)?
 const unsigned char NUM_LEDS = 8;      // Number of LED's.
@@ -31,15 +31,15 @@ struct CRGB leds[NUM_LEDS];            // Initialize our LED array.
 const int LED_BRIGHTNESS = 32;
 
 // Pins
-const unsigned char TEMPO_PIN = 14;
-const unsigned char SYNC_PIN = A5;
+const unsigned char TEMPO_PIN = A7;
+const unsigned char SYNC_PIN = 4;
 
 
 // Key matrix
 const byte ROWS = 4;
 const byte COLS = 4; 
-byte row_pins[ROWS] = {20, 23, 22, 21}; //connect to the row pinouts of the keypad
-byte col_pins[COLS] = {12, 18, 16, 15}; //connect to the column pinouts of the keypad
+byte row_pins[ROWS] = {5, A3, 7, 6}; //connect to the row pinouts of the keypad is goed
+byte col_pins[COLS] = {A4, 3, A5, A2}; //connect to the column pinouts of the keypad is goed 3 A5
 
 char keys[ROWS][COLS] = {
   {'A','B','C','D'},
@@ -94,9 +94,14 @@ void setup() {
   FastLED.addLeds<LED_TYPE, LED_DT, COLOR_ORDER>(leds, NUM_LEDS);
   FastLED.setBrightness(LED_BRIGHTNESS); 
   FastLED.clear();
+  leds[7] = CRGB::Blue;
   FastLED.show();
   
   keypad.setDebounceTime(5);
+
+  pinMode(11, INPUT); // These go Hi-Z because they connect to 5V/GND
+  pinMode(10, INPUT); // These go Hi-Z because they connect to 5V/GND
+  pinMode(9, INPUT);  // These go Hi-Z because they connect to 5V/GND
 
   pinMode(13, OUTPUT);
   pinMode(TEMPO_PIN, INPUT);
